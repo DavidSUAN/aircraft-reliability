@@ -1,0 +1,117 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --primary: #334155;
+    --primary-dark: #1e293b;
+    --bg: #f1f5f9;
+    --card-bg: #ffffff;
+    --text: #1e293b;
+    --text-light: #64748b;
+    --border: #e2e8f0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+}
+
+header {
+    background: var(--primary-dark);
+    color: white;
+    padding: 1rem 2rem;
+}
+
+header h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+.card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.25rem;
+}
+
+input, textarea, select {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-family: 'SF Mono', Monaco, monospace;
+}
+
+input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+}
+
+.metric-card {
+    background: var(--primary);
+    color: white;
+    border-radius: 4px;
+    padding: 0.75rem;
+}
+
+.tab-btn {
+    transition: all 0.15s;
+    border-radius: 4px;
+}
+
+.tab-btn:hover {
+    background: var(--bg);
+}
+
+.tab-active {
+    border-bottom: 2px solid var(--primary-dark);
+    color: var(--primary-dark);
+}
+
+.strategy-card {
+    border-left: 3px solid;
+}
+
+.strategy-high { border-color: #ef4444; background: #fef2f2; }
+.strategy-medium { border-color: #f59e0b; background: #fffbeb; }
+.strategy-low { border-color: #22c55e; background: #f0fdf4; }
+
+@media (max-width: 768px) {
+    .container {
+        padding: 1rem;
+    }
+    header h1 {
+        font-size: 1rem;
+    }
+}

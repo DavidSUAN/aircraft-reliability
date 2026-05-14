@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飞机部件Weibull可靠性分析系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f1f5f9; color: #1e293b; }
+        .card { background: white; border: 1px solid #e2e8f0; border-radius: 6px; }
+        .tab-active { border-bottom: 2px solid #334155; color: #334155; }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: #475569; box-shadow: 0 0 0 2px rgba(71,85,105,0.1); }
+        .btn-primary { background: #334155; }
+        .btn-primary:hover { background: #1e293b; }
+        .metric-card { background: #334155; }
+        .section-title { display: flex; align-items: center; gap: 8px; font-weight: 600; color: #334155; }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+    <header class="bg-slate-800 text-white py-4 px-8">
+        <h1 class="text-xl font-semibold tracking-wide">飞机部件可靠性分析</h1>
+        <p class="text-slate-400 text-sm mt-1">Weibull参数估计 | 机队管理 | 维修计划</p>
+    </header>
+
+    <main class="container mx-auto px-6 py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-1 space-y-6">
+                <div class="card p-5">
+                    <h2 class="text-base font-semibold mb-4 text-slate-700 section-title">数据输入</h2>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-slate-700 mb-2">输入方式</label>
+                        <div class="flex gap-2">
+                            <button onclick="switchInputMode('manual')" id="btn-manual" class="flex-1 py-2 px-4 rounded border border-slate-300 text-sm font-medium transition bg-slate-100 border-slate-400">手动输入</button>
+                            <button onclick="switchInputMode('file')" id="btn-file" class="flex-1 py-2 px-4 rounded border border-slate-300 text-sm font-medium transition">文件上传</button>
+                        </div>
+                    </div>
+
+                    <div id="manual-input">
+                        <label class="block text-sm font-medium text-slate-700 mb-1">失效时间数据</label>
+                        <textarea id="failure-data" rows="3" class="w-full p-3 border border-slate-300 rounded text-sm font-mono" placeholder="120, 85, 200, 150, 95..."></textarea>
+                        <p class="text-xs text-slate-500 mt-1">部件发生失效时的工作时间/循环次数，逗号分隔</p>
+                        
+                        <label class="block text-sm font-medium text-slate-700 mt-3 mb-1">状态数据 <span class="text-slate-400 font-normal text-xs">(可选)</span></label>
+                        <textarea id="failure-status" rows="2" class="w-full p-3 border border-slate-300 rounded text-sm font-mono" placeholder="1, 1, 0, 1, 1..."></textarea>
+                        <p class="text-xs text-slate-500 mt-1">1=失效(故障) | 0=删失(未失效仍在使用)</p>
+                        
+                        <label class="block text-sm font-medium text-slate-700 mt-3 mb-1">飞机号/机队 <span class="text-slate-400 font-normal text-xs">(可选)</span></label>
+                        <textarea id="failure-tail" rows="2" class="w-full p-3 border border-slate-300 rounded text-sm font-mono" placeholder="B-1234, Fleet-A..."></textarea>
+                        <p class="text-xs text-slate-500 mt-1">用于按单机或机队分组分析</p>
+                    </div>
+
+                    <div id="file-input" class="hidden">
+                        <label class="block text-sm font-medium text-slate-700 mb-2">上传CSV/Excel文件</label>
+                        <div class="border-2 border-dashed border-slate-300 rounded p-4 text-center">
+                            <input type="file" id="file-upload" accept=".csv,.xlsx,.xls" class="hidden">
+                            <button onclick="document.getElementById('file-upload').click()" class="py-2 px-4 bg-slate-100 hover:bg-slate-200 rounded text-sm font-medium transition">
+                                选择文件
+                            </button>
+                            <p class="text-xs text-slate-500 mt-2">支持列: time, status, aircraft_id, fleet_id</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card p-5">
+                    <h2 class="text-base font-semibold mb-4 text-slate-700 section-title">分析设置</h2>
+                    
+                    <label class="block text-sm font-medium text-slate-700 mb-2">拟合方法 <span class="text-slate-400 font-normal text-xs">(参数估计方式)</span></label>
+                    <select id="method-select" class="w-full p-3 border border-slate-300 rounded text-sm mb-1">
+                        <option value="mle">MLE - 最大似然估计 (推荐)</option>
+                        <option value="rrx">RRX - 秩回归X (小样本)</option>
+                        <option value="rray">RRY - 秩回归Y (小样本)</option>
+                    </select>
+                    <p class="text-xs text-slate-500 mb-4">MLE精度高，适合大样本；RRX/RRY适合样本量小于30的情况</p>
+
+                    <button onclick="runAnalysis()" class="w-full btn-primary text-white py-3 px-4 rounded font-medium transition">
+                        开始分析
+                    </button>
+                    
+                    <button onclick="loadSampleData()" class="w-full mt-2 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 px-4 rounded font-medium transition">
+                        加载示例数据
+                    </button>
+                    
+                    <button id="export-btn" onclick="exportReport()" disabled class="w-full mt-4 bg-slate-600 hover:bg-slate-700 text-white py-2 px-4 rounded font-medium transition disabled:bg-slate-300 disabled:cursor-not-allowed">
+                        导出报告 (PDF)
+                    </button>
+                </div>
+
+                <div class="card p-5">
+                    <h2 class="text-base font-semibold mb-4 text-slate-700 section-title">可靠寿命预测</h2>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">形状参数 β</label>
+                            <input type="number" id="pred-beta" step="0.01" class="w-full p-3 border border-slate-300 rounded text-sm font-mono" placeholder="β">
+                            <p class="text-xs text-slate-500 mt-1">β&lt;1早期失效, β≈1随机失效, β&gt;1磨损失效</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">尺度参数 η</label>
+                            <input type="number" id="pred-eta" step="0.01" class="w-full p-3 border border-slate-300 rounded text-sm font-mono" placeholder="η">
+                            <p class="text-xs text-slate-500 mt-1">特征寿命，63.2%部件失效的时间</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 mt-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">指定时间</label>
+                            <input type="number" id="pred-time" class="w-full p-3 border border-slate-300 rounded text-sm font-mono" placeholder="FH">
+                            <p class="text-xs text-slate-500 mt-1">计算该时刻的可靠度和失效率</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">可靠度目标</label>
+                            <input type="number" id="pred-reliability" step="0.01" min="0" max="1" class="w-full p-3 border border-slate-300 rounded text-sm font-mono" placeholder="0.9">
+                            <p class="text-xs text-slate-500 mt-1">计算达到此可靠度的时间</p>
+                        </div>
+                    </div>
+
+                    <button onclick="runPrediction()" class="w-full mt-4 bg-slate-500 hover:bg-slate-600 text-white py-2 px-4 rounded font-medium transition">
+                        计算
+                    </button>
+                    <div id="prediction-result" class="mt-4 p-3 bg-slate-50 rounded text-sm hidden"></div>
+                </div>
+            </div>
+
+            <!-- Right Column -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="card p-5">
+                    <div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-200">
+                        <h2 class="text-base font-semibold text-slate-700 section-title">分析结果</h2>
+                    </div>
+                    
+                    <div id="results-section" class="hidden">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                            <div class="metric-card p-3 rounded text-white">
+                                <p class="text-xs text-slate-200">形状参数 β <span class="text-slate-300 text-[10px]">(失效模式)</span></p>
+                                <p id="res-beta" class="text-xl font-bold font-mono">-</p>
+                            </div>
+                            <div class="metric-card p-3 rounded text-white">
+                                <p class="text-xs text-slate-200">尺度参数 η <span class="text-slate-300 text-[10px]">(特征寿命)</span></p>
+                                <p id="res-eta" class="text-xl font-bold font-mono">-</p>
+                            </div>
+                            <div class="metric-card p-3 rounded text-white">
+                                <p class="text-xs text-slate-200">MTBF <span class="text-slate-300 text-[10px]">(平均故障间隔)</span></p>
+                                <p id="res-mtbf" class="text-xl font-bold font-mono">-</p>
+                            </div>
+                            <div class="metric-card p-3 rounded text-white">
+                                <p class="text-xs text-slate-200">B10寿命 <span class="text-slate-300 text-[10px]">(10%失效)</span></p>
+                                <p id="res-b10" class="text-xl font-bold font-mono">-</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-100 p-3 rounded mb-4">
+                            <h3 class="text-xs font-semibold text-slate-600 mb-2">95% 置信区间 <span class="text-slate-400 font-normal">(参数不确定范围)</span></h3>
+                            <div class="grid grid-cols-2 gap-2 text-xs font-mono">
+                                <div>β: <span id="res-beta-ci">-</span></div>
+                                <div>η: <span id="res-eta-ci">-</span></div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                            <div class="bg-slate-50 p-3 rounded">
+                                <h3 class="text-xs font-semibold text-slate-600 mb-1">失效模式 <span class="text-slate-400 font-normal text-[10px]">(基于β值)</span></h3>
+                                <p class="text-sm"><span id="res-dist-type">-</span></p>
+                                <p class="text-xs text-slate-500 mt-1"><span id="res-failure-pattern">-</span></p>
+                            </div>
+                            <div id="strategy-card" class="strategy-card p-3 rounded">
+                                <h3 class="text-xs font-semibold mb-1">推荐维修策略</h3>
+                                <p id="res-strategy" class="text-sm font-medium">-</p>
+                                <p id="res-risk-level" class="text-xs mt-1">-</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2 text-center text-xs mb-5">
+                            <div class="p-2 bg-slate-50 rounded">
+                                <p class="text-slate-500">B5寿命 <span class="text-[10px]">(5%失效)</span></p>
+                                <p id="res-b5" class="font-semibold font-mono">-</p>
+                            </div>
+                            <div class="p-2 bg-slate-50 rounded">
+                                <p class="text-slate-500">B1寿命 <span class="text-[10px]">(1%失效)</span></p>
+                                <p id="res-b1" class="font-semibold font-mono">-</p>
+                            </div>
+                            <div class="p-2 bg-slate-50 rounded">
+                                <p class="text-slate-500">拟合方法</p>
+                                <p id="res-method" class="font-semibold font-mono">-</p>
+                            </div>
+                        </div>
+
+                        <!-- Engineering Summary -->
+                        <div id="engineering-decisions" class="hidden">
+                            <div class="border-t border-slate-200 pt-4 mt-4">
+                                <h3 class="text-base font-semibold text-slate-700 mb-3">工程决策建议</h3>
+                                
+                                <div class="bg-amber-50 border border-amber-200 p-3 rounded mb-3">
+                                    <h4 class="font-semibold text-amber-800 text-sm mb-1">风险提示</h4>
+                                    <p id="res-risk-desc" class="text-xs text-amber-700">-</p>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div class="bg-green-50 p-3 rounded">
+                                        <h4 class="font-semibold text-green-800 text-xs mb-1">推荐更换窗口</h4>
+                                        <p id="res-replacement-window" class="text-xs text-green-700">-</p>
+                                    </div>
+                                    <div class="bg-purple-50 p-3 rounded">
+                                        <h4 class="font-semibold text-purple-800 text-xs mb-1">失效率特征</h4>
+                                        <p id="res-hazard-char" class="text-xs text-purple-700">-</p>
+                                    </div>
+                                </div>
+
+                                <div class="mt-3 p-3 bg-blue-50 rounded">
+                                    <h4 class="font-semibold text-blue-800 text-xs mb-1">分析摘要</h4>
+                                    <p id="res-summary" class="text-xs text-blue-700">-</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="gof-section" class="hidden">
+                            <div class="border-t border-slate-200 pt-4 mt-4">
+                                <h3 class="text-xs font-semibold text-slate-600 mb-2">拟合优度检验 <span class="text-slate-400 font-normal">(检验Weibull分布是否适合数据)</span></h3>
+                                <div class="grid grid-cols-2 gap-2 text-xs">
+                                    <div class="p-2 bg-slate-50 rounded">
+                                        <p class="text-slate-500">Anderson-Darling <span class="text-[10px]">(AD检验)</span></p>
+                                        <p id="gof-ad" class="font-medium font-mono">-</p>
+                                        <p class="text-[10px] text-slate-400 mt-1">值越小拟合越好，临界值1.341</p>
+                                    </div>
+                                    <div class="p-2 bg-slate-50 rounded">
+                                        <p class="text-slate-500">Kolmogorov-Smirnov <span class="text-[10px]">(KS检验)</span></p>
+                                        <p id="gof-ks" class="font-medium font-mono">-</p>
+                                        <p class="text-[10px] text-slate-400 mt-1">值越小拟合越好</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="dist-comparison" class="hidden">
+                            <div class="border-t border-slate-200 pt-4 mt-4">
+                                <h3 class="text-xs font-semibold text-slate-600 mb-2">分布对比 (AIC/BIC) <span class="text-slate-400 font-normal">(越小越好)</span></h3>
+                                <div id="dist-comparison-table" class="text-xs"></div>
+                                <p id="dist-recommendation" class="mt-2 text-xs font-medium text-blue-600">-</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="no-results" class="text-center py-8 text-slate-400">
+                        <p class="text-base">请输入数据并运行分析</p>
+                    </div>
+                </div>
+
+                <div class="card p-5">
+                    <div class="flex items-center justify-between mb-3 pb-3 border-b border-slate-200">
+                        <div class="flex flex-wrap gap-1">
+                            <button onclick="switchTab('reliability')" class="px-3 py-1.5 font-medium text-xs tab-active tab-btn" id="tab-reliability" title="部件在时间t仍正常工作的概率">可靠度曲线</button>
+                            <button onclick="switchTab('cdf')" class="px-3 py-1.5 font-medium text-xs text-slate-400 tab-btn" id="tab-cdf" title="部件在时间t之前失效的累积概率">累积失效</button>
+                            <button onclick="switchTab('pdf')" class="px-3 py-1.5 font-medium text-xs text-slate-400 tab-btn" id="tab-pdf" title="失效时间分布的密度函数">概率密度</button>
+                            <button onclick="switchTab('hazard')" class="px-3 py-1.5 font-medium text-xs text-slate-400 tab-btn" id="tab-hazard" title="t时刻仍工作的部件在下一瞬间失效的概率">失效率</button>
+                            <button onclick="switchTab('probability')" class="px-3 py-1.5 font-medium text-xs text-slate-400 tab-btn" id="tab-probability" title="Weibull概率纸，数据点越接近直线拟合越好">概率图</button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-xs text-slate-500 whitespace-nowrap" title="在图表上标记指定失效概率对应的时间点">标记失效%:</label>
+                            <input type="number" id="mark-failure-rate" value="80" min="1" max="99" class="w-12 p-1.5 border border-slate-300 rounded text-xs text-center font-mono" title="输入1-99之间的数值">
+                            <span class="text-xs text-slate-500">%</span>
+                            <button onclick="refreshChart()" class="px-2 py-1.5 bg-slate-600 text-white rounded text-xs hover:bg-slate-700">应用</button>
+                        </div>
+                    </div>
+                    
+                    <div id="chart-container" class="h-80"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="text-center text-slate-400 text-xs py-4">
+        <p>飞机部件Weibull可靠性分析系统 v2.0</p>
+    </footer>
+
+    <script src="/static/js/app.js?v=5"></script>
+</body>
+</html>
